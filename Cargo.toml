@@ -1,0 +1,32 @@
+[package]
+name = "usb-power-relay"
+version = "1.0.0"
+edition = "2021"
+authors = ["USB Relay Controller"]
+description = "High-performance GUI application for CH340-based USB power relay control"
+
+[dependencies]
+# GUI framework - egui for maximum performance
+eframe = { version = "0.28", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "persistence",
+] }
+egui = "0.28"
+
+# Serial port communication
+serialport = "4.5"
+
+# Async runtime for non-blocking operations
+tokio = { version = "1", features = ["sync", "time"] }
+
+[profile.release]
+# Maximum optimization for speed
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
