@@ -1,7 +1,8 @@
-//! USB Power Relay Controller - Rust GUI Application
+//! USB Power Relay Controller - Minimal Rust GUI
 //!
-//! High-performance GUI for CH340-based USB relay modules.
-//! Features: ON/OFF buttons, real-time status indicator, auto-detection.
+//! Simple, fast GUI for CH340-based USB relay modules.
+
+#![windows_subsystem = "windows"]
 
 use eframe::egui;
 use serialport::{SerialPort, SerialPortType};
@@ -13,26 +14,17 @@ use tokio::sync::mpsc;
 // CONSTANTS
 // ============================================================================
 
-/// Serial communication baud rate
 const BAUD_RATE: u32 = 9600;
-
-/// Response delay after sending command (milliseconds)
 const RESPONSE_DELAY_MS: u64 = 100;
-
-/// Serial timeout
 const TIMEOUT: Duration = Duration::from_millis(500);
 
-/// Protocol commands
 const CMD_OFF: [u8; 4] = [0xA0, 0x01, 0x00, 0xA1];
 const CMD_ON: [u8; 4] = [0xA0, 0x01, 0x03, 0xA4];
 const CMD_STATUS: [u8; 4] = [0xA0, 0x01, 0x05, 0xA6];
 
-/// Response validation
 const RESPONSE_HEADER: [u8; 2] = [0xA0, 0x01];
 const STATE_ON: u8 = 0x01;
-const STATE_OFF: u8 = 0x00;
 
-/// Device detection keywords
 const CH340_KEYWORDS: &[&str] = &["CH340", "CH341", "USB-SERIAL"];
 
 // ============================================================================
@@ -50,10 +42,10 @@ enum RelayState {
 impl RelayState {
     fn color(&self) -> egui::Color32 {
         match self {
-            RelayState::On => egui::Color32::from_rgb(0, 200, 0),      // Green
-            RelayState::Off => egui::Color32::from_rgb(200, 0, 0),     // Red
-            RelayState::Unknown => egui::Color32::from_rgb(150, 150, 150), // Gray
-            RelayState::Error => egui::Color32::from_rgb(255, 100, 0), // Orange
+            RelayState::On => egui::Color32::from_rgb(34, 197, 94),   // Modern green
+            RelayState::Off => egui::Color32::from_rgb(239, 68, 68),  // Modern red
+            RelayState::Unknown => egui::Color32::from_rgb(156, 163, 175), // Gray
+            RelayState::Error => egui::Color32::from_rgb(249, 115, 22), // Orange
         }
     }
 
@@ -61,7 +53,7 @@ impl RelayState {
         match self {
             RelayState::On => "ON",
             RelayState::Off => "OFF",
-            RelayState::Unknown => "UNKNOWN",
+            RelayState::Unknown => "...",
             RelayState::Error => "ERROR",
         }
     }
@@ -76,7 +68,6 @@ struct RelayController {
 }
 
 impl RelayController {
-    /// Auto-detect and open CH340 relay device
     fn new() -> Result<Self, String> {
         let port_info = Self::detect_device()?;
 
@@ -88,12 +79,11 @@ impl RelayController {
         Ok(Self { port })
     }
 
-    /// Detect CH340/CH341 device
     fn detect_device() -> Result<serialport::SerialPortInfo, String> {
         let ports = serialport::available_ports()
             .map_err(|e| format!("Failed to list ports: {}", e))?;
 
-        // Priority 1: Look for CH340/CH341 devices
+        // Look for CH340/CH341 devices
         for port in &ports {
             if let SerialPortType::UsbPort(info) = &port.port_type {
                 let product = info.product.as_deref().unwrap_or("");
@@ -106,37 +96,31 @@ impl RelayController {
             }
         }
 
-        // Priority 2: Look for any USB serial device
+        // Fallback to any USB serial device
         for port in &ports {
             if matches!(port.port_type, SerialPortType::UsbPort(_)) {
                 return Ok(port.clone());
             }
         }
 
-        Err("No USB relay device found. Ensure CH340 drivers are installed.".to_string())
+        Err("No USB relay found".to_string())
     }
 
-    /// Send command and read response
     fn send_command(&mut self, command: &[u8; 4]) -> Result<Option<RelayState>, String> {
-        // Clear buffers
         self.port.clear(serialport::ClearBuffer::All)
-            .map_err(|e| format!("Failed to clear buffers: {}", e))?;
+            .map_err(|e| format!("Clear failed: {}", e))?;
 
-        // Send command
         self.port.write_all(command)
-            .map_err(|e| format!("Failed to write command: {}", e))?;
+            .map_err(|e| format!("Write failed: {}", e))?;
 
         self.port.flush()
-            .map_err(|e| format!("Failed to flush: {}", e))?;
+            .map_err(|e| format!("Flush failed: {}", e))?;
 
-        // Wait for response
         std::thread::sleep(Duration::from_millis(RESPONSE_DELAY_MS));
 
-        // Read response
         let mut buf = [0u8; 32];
         match self.port.read(&mut buf) {
             Ok(n) if n >= 4 => {
-                // Validate response header
                 if buf[0] == RESPONSE_HEADER[0] && buf[1] == RESPONSE_HEADER[1] {
                     return Ok(Some(if buf[2] == STATE_ON {
                         RelayState::On
@@ -152,23 +136,20 @@ impl RelayController {
         }
     }
 
-    /// Turn relay ON
     fn turn_on(&mut self) -> Result<RelayState, String> {
         match self.send_command(&CMD_ON)? {
             Some(state) => Ok(state),
-            None => Ok(RelayState::On), // Command sent, assume success
+            None => Ok(RelayState::On),
         }
     }
 
-    /// Turn relay OFF
     fn turn_off(&mut self) -> Result<RelayState, String> {
         match self.send_command(&CMD_OFF)? {
             Some(state) => Ok(state),
-            None => Ok(RelayState::Off), // Command sent, assume success
+            None => Ok(RelayState::Off),
         }
     }
 
-    /// Query relay status
     fn query_status(&mut self) -> Result<RelayState, String> {
         match self.send_command(&CMD_STATUS)? {
             Some(state) => Ok(state),
@@ -184,12 +165,11 @@ impl RelayController {
 enum Command {
     TurnOn,
     TurnOff,
-    QueryStatus,
 }
 
 struct AppState {
     relay_state: RelayState,
-    status_message: String,
+    error_message: Option<String>,
     command_tx: mpsc::UnboundedSender<Command>,
 }
 
@@ -197,7 +177,7 @@ impl AppState {
     fn new(command_tx: mpsc::UnboundedSender<Command>) -> Self {
         Self {
             relay_state: RelayState::Unknown,
-            status_message: "Initializing...".to_string(),
+            error_message: None,
             command_tx,
         }
     }
@@ -217,30 +197,33 @@ struct RelayApp {
 
 impl RelayApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Configure fonts and style
+        // Configure style for cleaner look
         let mut style = (*cc.egui_ctx.style()).clone();
-        style.spacing.button_padding = egui::vec2(20.0, 10.0);
-        style.spacing.item_spacing = egui::vec2(10.0, 15.0);
+        style.visuals.window_rounding = 0.0.into();
+        style.visuals.window_shadow = egui::epaint::Shadow {
+            offset: egui::vec2(0.0, 0.0),
+            blur: 0.0,
+            spread: 0.0,
+            color: egui::Color32::TRANSPARENT,
+        };
         cc.egui_ctx.set_style(style);
 
-        // Create command channel
         let (tx, mut rx) = mpsc::unbounded_channel::<Command>();
-
         let state = Arc::new(Mutex::new(AppState::new(tx)));
         let state_clone = Arc::clone(&state);
 
-        // Spawn background thread for serial communication
+        // Background thread for serial communication
         std::thread::spawn(move || {
             let mut controller = match RelayController::new() {
                 Ok(c) => {
                     if let Ok(mut state) = state_clone.lock() {
-                        state.status_message = "Device connected".to_string();
+                        state.error_message = None;
                     }
                     c
                 }
                 Err(e) => {
                     if let Ok(mut state) = state_clone.lock() {
-                        state.status_message = format!("Error: {}", e);
+                        state.error_message = Some(e);
                         state.relay_state = RelayState::Error;
                     }
                     return;
@@ -251,33 +234,26 @@ impl RelayApp {
             if let Ok(status) = controller.query_status() {
                 if let Ok(mut state) = state_clone.lock() {
                     state.relay_state = status;
-                    state.status_message = "Ready".to_string();
+                    state.error_message = None;
                 }
             }
 
             // Command processing loop
             while let Some(cmd) = rx.blocking_recv() {
                 let result = match cmd {
-                    Command::TurnOn => {
-                        controller.turn_on()
-                    }
-                    Command::TurnOff => {
-                        controller.turn_off()
-                    }
-                    Command::QueryStatus => {
-                        controller.query_status()
-                    }
+                    Command::TurnOn => controller.turn_on(),
+                    Command::TurnOff => controller.turn_off(),
                 };
 
                 if let Ok(mut state) = state_clone.lock() {
                     match result {
                         Ok(new_state) => {
                             state.relay_state = new_state;
-                            state.status_message = "Ready".to_string();
+                            state.error_message = None;
                         }
                         Err(e) => {
                             state.relay_state = RelayState::Error;
-                            state.status_message = format!("Error: {}", e);
+                            state.error_message = Some(e);
                         }
                     }
                 }
@@ -290,57 +266,56 @@ impl RelayApp {
 
 impl eframe::App for RelayApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Request repaint for smooth updates
         ctx.request_repaint();
 
         let state = self.state.lock().unwrap();
         let relay_state = state.relay_state;
-        let status_message = state.status_message.clone();
+        let error = state.error_message.clone();
         drop(state);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(20.0);
-
-                // Title
-                ui.heading("USB Power Relay");
-                ui.add_space(10.0);
-                ui.label("CH340-based Relay Controller");
-                ui.add_space(30.0);
+                ui.add_space(40.0);
 
                 // Status indicator - large circle
                 let status_color = relay_state.color();
                 let (rect, _) = ui.allocate_exact_size(
-                    egui::vec2(100.0, 100.0),
+                    egui::vec2(120.0, 120.0),
                     egui::Sense::hover()
                 );
+
                 ui.painter().circle_filled(
                     rect.center(),
-                    50.0,
+                    60.0,
                     status_color,
                 );
 
-                // Status text on indicator
                 ui.painter().text(
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
                     relay_state.text(),
-                    egui::FontId::proportional(24.0),
+                    egui::FontId::proportional(32.0),
                     egui::Color32::WHITE,
                 );
 
-                ui.add_space(30.0);
+                ui.add_space(50.0);
 
-                // Control buttons
+                // Control buttons - centered horizontally
                 ui.horizontal(|ui| {
-                    ui.add_space(50.0);
+                    // Calculate total width: 2 buttons (140px each) + gap (20px) = 300px
+                    // Center in 350px window: (350 - 300) / 2 = 25px spacing
+                    let available_width = ui.available_width();
+                    let buttons_width = 140.0 + 20.0 + 140.0;
+                    let spacing = (available_width - buttons_width) / 2.0;
+
+                    ui.add_space(spacing.max(0.0));
 
                     // ON button
                     let on_button = egui::Button::new(
-                        egui::RichText::new("⚡ ON").size(24.0)
+                        egui::RichText::new("ON").size(28.0).strong()
                     )
-                    .fill(egui::Color32::from_rgb(0, 120, 0))
-                    .min_size(egui::vec2(150.0, 60.0));
+                    .fill(egui::Color32::from_rgb(22, 163, 74))
+                    .min_size(egui::vec2(140.0, 70.0));
 
                     if ui.add(on_button).clicked() {
                         let state = self.state.lock().unwrap();
@@ -351,10 +326,10 @@ impl eframe::App for RelayApp {
 
                     // OFF button
                     let off_button = egui::Button::new(
-                        egui::RichText::new("⭘ OFF").size(24.0)
+                        egui::RichText::new("OFF").size(28.0).strong()
                     )
-                    .fill(egui::Color32::from_rgb(120, 0, 0))
-                    .min_size(egui::vec2(150.0, 60.0));
+                    .fill(egui::Color32::from_rgb(220, 38, 38))
+                    .min_size(egui::vec2(140.0, 70.0));
 
                     if ui.add(off_button).clicked() {
                         let state = self.state.lock().unwrap();
@@ -364,15 +339,9 @@ impl eframe::App for RelayApp {
 
                 ui.add_space(30.0);
 
-                // Status message
-                ui.label(format!("Status: {}", status_message));
-
-                ui.add_space(20.0);
-
-                // Refresh button
-                if ui.button("🔄 Refresh Status").clicked() {
-                    let state = self.state.lock().unwrap();
-                    state.send_command(Command::QueryStatus);
+                // Error message if any
+                if let Some(err) = error {
+                    ui.colored_label(egui::Color32::from_rgb(239, 68, 68), err);
                 }
             });
         });
@@ -386,14 +355,15 @@ impl eframe::App for RelayApp {
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([500.0, 450.0])
+            .with_inner_size([350.0, 380.0])
             .with_resizable(false)
-            .with_title("USB Power Relay Controller"),
+            .with_maximize_button(false)
+            .with_title("USB Relay"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "USB Power Relay",
+        "USB Relay",
         options,
         Box::new(|cc| Ok(Box::new(RelayApp::new(cc)))),
     )
