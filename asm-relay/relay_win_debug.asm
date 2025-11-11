@@ -20,6 +20,9 @@ section .data
     cmd_off:    db 0xA0, 0x01, 0x00, 0xA1
     cmd_status: db 0xA0, 0x01, 0x05, 0xA6
 
+    ; Version
+    version: db "=== USB Relay Debug v1.3 ===", 13, 10, 0
+
     ; Debug messages
     dbg_start: db "[DEBUG] Program started", 13, 10, 0
     dbg_got_handles: db "[DEBUG] Got console handles", 13, 10, 0
@@ -30,10 +33,17 @@ section .data
     dbg_createfile_result: db "[DEBUG] CreateFileA returned: 0x", 0
     dbg_port_opened: db "[DEBUG] Port opened successfully!", 13, 10, 0
     dbg_configuring: db "[DEBUG] Configuring serial port...", 13, 10, 0
+    dbg_getcommstate_ret: db "[DEBUG] GetCommState returned: ", 0
+    dbg_setcommstate_ret: db "[DEBUG] SetCommState returned: ", 0
     dbg_configured: db "[DEBUG] Port configured", 13, 10, 0
-    dbg_sending_cmd: db "[DEBUG] Sending command...", 13, 10, 0
-    dbg_sent: db "[DEBUG] Command sent, waiting for response...", 13, 10, 0
-    dbg_response: db "[DEBUG] Got response, bytes = ", 0
+    dbg_sending_cmd: db "[DEBUG] Sending command bytes: ", 0
+    dbg_writefile_ret: db "[DEBUG] WriteFile returned: ", 0
+    dbg_bytes_written: db "[DEBUG] Bytes written: ", 0
+    dbg_sent: db "[DEBUG] Sleeping 100ms...", 13, 10, 0
+    dbg_reading: db "[DEBUG] Calling ReadFile...", 13, 10, 0
+    dbg_readfile_ret: db "[DEBUG] ReadFile returned: ", 0
+    dbg_response: db "[DEBUG] Response bytes read: ", 0
+    dbg_buffer_contents: db "[DEBUG] Buffer contents (hex): ", 0
     dbg_relay_on: db "[DEBUG] Calling relay_on", 13, 10, 0
     dbg_relay_off: db "[DEBUG] Calling relay_off", 13, 10, 0
     dbg_relay_status: db "[DEBUG] Calling relay_status", 13, 10, 0
@@ -91,6 +101,10 @@ main:
     push rbp
     mov rbp, rsp
     sub rsp, 64
+
+    ; Show version first
+    lea rcx, [version]
+    call print_string
 
     ; DEBUG: Program started
     lea rcx, [dbg_start]
@@ -402,6 +416,7 @@ open_com_port:
 ; configure_com_port - FIXED with correct DCB offsets
 ; ============================================================================
 configure_com_port:
+    push r12
     sub rsp, 40
 
     ; Get current DCB settings
@@ -409,6 +424,17 @@ configure_com_port:
     lea rdx, [dcb]
     mov dword [rdx], 28          ; DCBlength = 28 (actual size of DCB structure is 28 bytes minimum)
     call GetCommState
+    mov r12, rax                 ; Save return value
+
+    ; Show GetCommState result
+    push rcx
+    lea rcx, [dbg_getcommstate_ret]
+    call print_debug
+    mov rax, r12
+    call print_hex_byte
+    lea rcx, [newline]
+    call print_debug
+    pop rcx
 
     ; DCB structure (correct offsets):
     ; +0  = DCBlength (DWORD)
@@ -446,6 +472,17 @@ configure_com_port:
     mov rcx, [hCom]
     lea rdx, [dcb]
     call SetCommState
+    mov r12, rax                 ; Save return value
+
+    ; Show SetCommState result
+    push rcx
+    lea rcx, [dbg_setcommstate_ret]
+    call print_debug
+    mov rax, r12
+    call print_hex_byte
+    lea rcx, [newline]
+    call print_debug
+    pop rcx
 
     ; Set timeouts (generous for debugging)
     lea rax, [timeouts]
@@ -460,6 +497,7 @@ configure_com_port:
     call SetCommTimeouts
 
     add rsp, 40
+    pop r12
     ret
 
 ; ============================================================================
@@ -476,18 +514,37 @@ close_com_port:
     ret
 
 ; ============================================================================
-; send_command
+; send_command - WITH EXTENSIVE LOGGING
 ; ============================================================================
 send_command:
     push rbx
     push r12
+    push r13
+    push r14
     sub rsp, 40
 
-    mov r12, rcx
+    mov r12, rcx        ; Save command pointer
 
+    ; Show command bytes
     lea rcx, [dbg_sending_cmd]
     call print_debug
 
+    ; Print all 4 command bytes
+    xor r13, r13
+.print_cmd_loop:
+    movzx rax, byte [r12 + r13]
+    call print_hex_byte
+    mov byte [num_buffer], ' '
+    mov byte [num_buffer + 1], 0
+    lea rcx, [num_buffer]
+    call print_string
+    inc r13
+    cmp r13, 4
+    jl .print_cmd_loop
+    lea rcx, [newline]
+    call print_debug
+
+    ; Call WriteFile
     mov rcx, [hCom]
     mov rdx, r12
     mov r8d, 4
@@ -495,12 +552,33 @@ send_command:
     xor eax, eax
     mov [rsp + 32], rax
     call WriteFile
+    mov r14, rax        ; Save WriteFile return value
 
-    lea rcx, [dbg_sent]
+    ; Show WriteFile result
+    lea rcx, [dbg_writefile_ret]
+    call print_debug
+    mov rax, r14
+    call print_hex_byte
+    lea rcx, [newline]
     call print_debug
 
+    ; Show bytes written
+    lea rcx, [dbg_bytes_written]
+    call print_debug
+    mov rax, [bytes_written]
+    call print_hex_byte
+    lea rcx, [newline]
+    call print_debug
+
+    ; Sleep
+    lea rcx, [dbg_sent]
+    call print_debug
     mov rcx, 100
     call Sleep
+
+    ; Call ReadFile
+    lea rcx, [dbg_reading]
+    call print_debug
 
     mov rcx, [hCom]
     lea rdx, [response]
@@ -509,7 +587,17 @@ send_command:
     xor eax, eax
     mov [rsp + 32], rax
     call ReadFile
+    mov r14, rax        ; Save ReadFile return value
 
+    ; Show ReadFile result
+    lea rcx, [dbg_readfile_ret]
+    call print_debug
+    mov rax, r14
+    call print_hex_byte
+    lea rcx, [newline]
+    call print_debug
+
+    ; Show bytes read
     lea rcx, [dbg_response]
     call print_debug
     mov rax, [bytes_read]
@@ -517,9 +605,40 @@ send_command:
     lea rcx, [newline]
     call print_debug
 
+    ; Show buffer contents (first 16 bytes)
+    mov r13, [bytes_read]
+    cmp r13, 0
+    je .no_data
+
+    lea rcx, [dbg_buffer_contents]
+    call print_debug
+
+    xor r14, r14
+.print_buffer:
+    cmp r14, r13
+    jge .done_buffer
+    cmp r14, 16         ; Max 16 bytes
+    jge .done_buffer
+
+    movzx rax, byte [response + r14]
+    call print_hex_byte
+    mov byte [num_buffer], ' '
+    mov byte [num_buffer + 1], 0
+    lea rcx, [num_buffer]
+    call print_string
+    inc r14
+    jmp .print_buffer
+
+.done_buffer:
+    lea rcx, [newline]
+    call print_debug
+
+.no_data:
     mov rax, [bytes_read]
 
     add rsp, 40
+    pop r14
+    pop r13
     pop r12
     pop rbx
     ret
