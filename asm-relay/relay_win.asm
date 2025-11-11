@@ -351,19 +351,25 @@ open_com_port:
     mov rbx, 5          ; 5 ports to try
 
 .try_next:
-    ; CreateFileA(portName, GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL)
-    sub rsp, 32         ; Shadow space
-    xor r9, r9          ; hTemplateFile = NULL
-    mov [rsp + 32], r9  ; on stack
-    xor r9, r9          ; dwFlagsAndAttributes = 0
-    mov r8d, OPEN_EXISTING
-    xor edx, edx        ; dwShareMode = 0
-    xor edx, edx        ; lpSecurityAttributes = NULL (in rdx)
-    mov ecx, GENERIC_READ
-    or ecx, GENERIC_WRITE
-    mov rcx, r12        ; lpFileName
+    ; CreateFileA(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
+    ;             dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile)
+    ; Windows x64: rcx, rdx, r8, r9, [rsp+32], [rsp+40], [rsp+48]
+    sub rsp, 64         ; Shadow space (32) + 3 stack params (24) + alignment (8)
+
+    ; Stack parameters (5th, 6th, 7th parameters)
+    mov dword [rsp + 32], OPEN_EXISTING     ; dwCreationDisposition
+    mov qword [rsp + 40], 0                 ; dwFlagsAndAttributes = 0
+    mov qword [rsp + 48], 0                 ; hTemplateFile = NULL
+
+    ; Register parameters (1st through 4th)
+    mov rcx, r12                            ; lpFileName (COM port string)
+    mov edx, GENERIC_READ
+    or edx, GENERIC_WRITE                   ; dwDesiredAccess
+    xor r8d, r8d                            ; dwShareMode = 0
+    xor r9, r9                              ; lpSecurityAttributes = NULL
+
     call CreateFileA
-    add rsp, 32
+    add rsp, 64
 
     cmp rax, INVALID_HANDLE_VALUE
     jne .opened
