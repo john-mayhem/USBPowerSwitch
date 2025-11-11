@@ -21,7 +21,7 @@ section .data
     cmd_status: db 0xA0, 0x01, 0x05, 0xA6
 
     ; Version
-    version: db "=== USB Relay Debug v1.3 ===", 13, 10, 0
+    version: db "=== USB Relay Debug v1.4 ===", 13, 10, 0
 
     ; Debug messages
     dbg_start: db "[DEBUG] Program started", 13, 10, 0
