@@ -1,7 +1,10 @@
 # Build artifacts
 *.o
+*.obj
 relay
 relay_gas
+relay.exe
+relay_win.exe
 
 # Backup files
 *~
