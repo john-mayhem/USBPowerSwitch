@@ -399,33 +399,59 @@ open_com_port:
     ret
 
 ; ============================================================================
-; configure_com_port
+; configure_com_port - FIXED with correct DCB offsets
 ; ============================================================================
 configure_com_port:
     sub rsp, 40
 
+    ; Get current DCB settings
     mov rcx, [hCom]
     lea rdx, [dcb]
-    mov dword [rdx], 128
+    mov dword [rdx], 28          ; DCBlength = 28 (actual size of DCB structure is 28 bytes minimum)
     call GetCommState
 
-    lea rax, [dcb]
-    mov dword [rax + 4], 9600
-    mov byte [rax + 8], 1
-    mov byte [rax + 14], 8
-    mov byte [rax + 15], 0
-    mov byte [rax + 16], 0
+    ; DCB structure (correct offsets):
+    ; +0  = DCBlength (DWORD)
+    ; +4  = BaudRate (DWORD)
+    ; +8  = flags (DWORD) - contains fBinary and other bitfields
+    ; +12 = wReserved (WORD)
+    ; +14 = XonLim (WORD)
+    ; +16 = XoffLim (WORD)
+    ; +18 = ByteSize (BYTE)
+    ; +19 = Parity (BYTE)
+    ; +20 = StopBits (BYTE)
+    ; +21 = XonChar (char)
+    ; +22 = XoffChar (char)
+    ; +23 = ErrorChar (char)
+    ; +24 = EofChar (char)
+    ; +25 = EvtChar (char)
+    ; +26 = wReserved1 (WORD)
 
+    lea rax, [dcb]
+
+    ; Set baud rate to 9600
+    mov dword [rax + 4], 9600
+
+    ; Set flags: fBinary=1, rest from GetCommState
+    mov dword [rax + 8], 1       ; fBinary = TRUE (bit 0 set)
+
+    ; Set ByteSize = 8, Parity = 0 (None), StopBits = 0 (1 stop bit)
+    mov byte [rax + 18], 8       ; ByteSize = 8 bits
+    mov byte [rax + 19], 0       ; Parity = NOPARITY
+    mov byte [rax + 20], 0       ; StopBits = ONESTOPBIT
+
+    ; Apply settings
     mov rcx, [hCom]
     lea rdx, [dcb]
     call SetCommState
 
+    ; Set timeouts (generous for debugging)
     lea rax, [timeouts]
-    mov dword [rax], 500
-    mov dword [rax + 4], 0
-    mov dword [rax + 8], 500
-    mov dword [rax + 12], 0
-    mov dword [rax + 16], 500
+    mov dword [rax], 1000        ; ReadIntervalTimeout = 1000ms
+    mov dword [rax + 4], 0       ; ReadTotalTimeoutMultiplier = 0
+    mov dword [rax + 8], 2000    ; ReadTotalTimeoutConstant = 2000ms (2 seconds!)
+    mov dword [rax + 12], 0      ; WriteTotalTimeoutMultiplier = 0
+    mov dword [rax + 16], 1000   ; WriteTotalTimeoutConstant = 1000ms
 
     mov rcx, [hCom]
     lea rdx, [timeouts]
