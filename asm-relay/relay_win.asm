@@ -397,37 +397,42 @@ open_com_port:
     ret
 
 ; ============================================================================
-; configure_com_port - Configure COM port for 9600 8N1
+; configure_com_port - Configure COM port for 9600 8N1 (FIXED)
 ; ============================================================================
 configure_com_port:
     sub rsp, 40
 
-    ; GetCommState
+    ; Get current DCB settings
     mov rcx, [hCom]
     lea rdx, [dcb]
-    mov dword [rdx], 128    ; DCB size
+    mov dword [rdx], 28         ; DCBlength
     call GetCommState
 
-    ; Set baud rate to 9600
+    ; Set correct DCB fields using proper offsets:
+    ; +4  = BaudRate
+    ; +8  = flags (fBinary is bit 0)
+    ; +18 = ByteSize
+    ; +19 = Parity
+    ; +20 = StopBits
     lea rax, [dcb]
-    mov dword [rax + 4], 9600   ; BaudRate
-    mov byte [rax + 8], 1       ; fBinary = TRUE
-    mov byte [rax + 14], 8      ; ByteSize = 8
-    mov byte [rax + 15], 0      ; Parity = NOPARITY
-    mov byte [rax + 16], 0      ; StopBits = ONESTOPBIT
+    mov dword [rax + 4], 9600   ; BaudRate = 9600
+    mov dword [rax + 8], 1      ; fBinary = TRUE
+    mov byte [rax + 18], 8      ; ByteSize = 8
+    mov byte [rax + 19], 0      ; Parity = NOPARITY
+    mov byte [rax + 20], 0      ; StopBits = ONESTOPBIT
 
-    ; SetCommState
+    ; Apply settings
     mov rcx, [hCom]
     lea rdx, [dcb]
     call SetCommState
 
-    ; Set timeouts
+    ; Set timeouts (generous)
     lea rax, [timeouts]
-    mov dword [rax], 500        ; ReadIntervalTimeout
+    mov dword [rax], 1000       ; ReadIntervalTimeout = 1000ms
     mov dword [rax + 4], 0      ; ReadTotalTimeoutMultiplier
-    mov dword [rax + 8], 500    ; ReadTotalTimeoutConstant
+    mov dword [rax + 8], 2000   ; ReadTotalTimeoutConstant = 2000ms
     mov dword [rax + 12], 0     ; WriteTotalTimeoutMultiplier
-    mov dword [rax + 16], 500   ; WriteTotalTimeoutConstant
+    mov dword [rax + 16], 1000  ; WriteTotalTimeoutConstant = 1000ms
 
     mov rcx, [hCom]
     lea rdx, [timeouts]
