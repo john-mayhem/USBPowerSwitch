@@ -432,8 +432,10 @@ configure_com_port:
     ; Set baud rate to 9600
     mov dword [rax + 4], 9600
 
-    ; Set flags: fBinary=1, rest from GetCommState
-    mov dword [rax + 8], 1       ; fBinary = TRUE (bit 0 set)
+    ; Set flags: PRESERVE existing flags, only set fBinary bit
+    mov edx, [rax + 8]           ; Read existing flags
+    or edx, 1                    ; Set bit 0 (fBinary) = TRUE
+    mov dword [rax + 8], edx     ; Write back with fBinary set
 
     ; Set ByteSize = 8, Parity = 0 (None), StopBits = 0 (1 stop bit)
     mov byte [rax + 18], 8       ; ByteSize = 8 bits
