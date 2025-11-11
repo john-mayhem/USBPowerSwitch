@@ -416,7 +416,12 @@ configure_com_port:
     ; +20 = StopBits
     lea rax, [dcb]
     mov dword [rax + 4], 9600   ; BaudRate = 9600
-    mov dword [rax + 8], 1      ; fBinary = TRUE
+
+    ; Preserve existing flags, only set fBinary bit
+    mov edx, [rax + 8]          ; Read existing flags
+    or edx, 1                   ; Set bit 0 (fBinary)
+    mov dword [rax + 8], edx    ; Write back
+
     mov byte [rax + 18], 8      ; ByteSize = 8
     mov byte [rax + 19], 0      ; Parity = NOPARITY
     mov byte [rax + 20], 0      ; StopBits = ONESTOPBIT
