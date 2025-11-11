@@ -102,18 +102,18 @@ main:
     mov rbp, rsp
     sub rsp, 64
 
-    ; Show version first
+    ; Get stdout FIRST!
+    mov rcx, STD_OUTPUT_HANDLE
+    call GetStdHandle
+    mov [hStdOut], rax
+
+    ; NOW show version
     lea rcx, [version]
     call print_string
 
     ; DEBUG: Program started
     lea rcx, [dbg_start]
     call print_debug
-
-    ; Get stdout
-    mov rcx, STD_OUTPUT_HANDLE
-    call GetStdHandle
-    mov [hStdOut], rax
 
     ; DEBUG: Got handles
     lea rcx, [dbg_got_handles]
@@ -426,15 +426,13 @@ configure_com_port:
     call GetCommState
     mov r12, rax                 ; Save return value
 
-    ; Show GetCommState result
-    push rcx
+    ; Show GetCommState result (NO push/pop - causes stack misalignment!)
     lea rcx, [dbg_getcommstate_ret]
     call print_debug
     mov rax, r12
     call print_hex_byte
     lea rcx, [newline]
     call print_debug
-    pop rcx
 
     ; DCB structure (correct offsets):
     ; +0  = DCBlength (DWORD)
@@ -474,15 +472,13 @@ configure_com_port:
     call SetCommState
     mov r12, rax                 ; Save return value
 
-    ; Show SetCommState result
-    push rcx
+    ; Show SetCommState result (NO push/pop - causes stack misalignment!)
     lea rcx, [dbg_setcommstate_ret]
     call print_debug
     mov rax, r12
     call print_hex_byte
     lea rcx, [newline]
     call print_debug
-    pop rcx
 
     ; Set timeouts (generous for debugging)
     lea rax, [timeouts]
