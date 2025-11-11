@@ -1,0 +1,13 @@
+# Build artifacts
+*.o
+relay
+relay_gas
+
+# Backup files
+*~
+*.swp
+*.swo
+
+# Editor files
+.vscode/
+.idea/
